@@ -1,5 +1,9 @@
-const { Server } = require("socket.io");
-const http = require("http");
+// This tells the server to use Railway's assigned port
+const PORT = process.env.PORT || 8080; 
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Matchmaker live on port ${PORT}`);
+});
 
 const server = http.createServer();
 const io = new Server(server, {
