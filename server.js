@@ -1,37 +1,51 @@
-const http = require('http');
+const { Server } = require("socket.io");
+const http = require("http");
+
 const server = http.createServer();
-const io = require('socket.io')(server);
-
-const PORT = process.env.PORT || 3000;
-const rooms = {};
-
-io.on('connection', (socket) => {
-    // Correct IP extraction for Socket.io 2.x + Railway
-    const clientIP = socket.handshake.headers['x-forwarded-for'] || 
-                     socket.request.connection.remoteAddress.replace('::ffff:', '');
-    
-    console.log(`Connected: ${clientIP}`);
-
-    socket.on('host-room', (code) => {
-        rooms[code] = clientIP;
-        socket.join(code);
-        console.log(`Room [${code}] hosted at ${clientIP}`);
-    });
-
-    socket.on('join-room', (code) => {
-        let hostIP = rooms[code];
-        if (hostIP) {
-            // Loopback fix for same-machine testing
-            if (hostIP === clientIP) {
-                hostIP = "127.0.0.1";
-            }
-            socket.emit('join-success', hostIP);
-            console.log(`Join [${code}]: Sent IP ${hostIP}`);
-        }
-    });
+const io = new Server(server, {
+  cors: { origin: "*" } // Allows connections from your HTML5 build
 });
 
-// IMPORTANT: Listen on 0.0.0.0 so Railway can find the app
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Relay v2.3.0 listening on port ${PORT}`);
+// This object stores active rooms: { "RoomCode": "HostIP" }
+const activeRooms = {};
+
+io.on("connection", (socket) => {
+  const userIP = socket.handshake.address.replace('::ffff:', '');
+  console.log(`User connected: ${socket.id} from ${userIP}`);
+
+  // --- HOST LOGIC ---
+  socket.on("host_room", (roomCode) => {
+    activeRooms[roomCode] = userIP;
+    socket.join(roomCode);
+    console.log(`Room [${roomCode}] created by Host at ${userIP}`);
+    socket.emit("status", "Room registered successfully.");
+  });
+
+  // --- JOINER LOGIC ---
+  socket.on("find_room", (roomCode) => {
+    const targetIP = activeRooms[roomCode];
+
+    if (targetIP) {
+      console.log(`Survivor ${socket.id} found Room [${roomCode}]. Sending IP: ${targetIP}`);
+      // Send the IP back to the survivor so Unreal can "Open" it
+      socket.emit("receive_ip", targetIP); 
+    } else {
+      socket.emit("status", "Room not found. Check your code!");
+    }
+  });
+
+  // Cleanup when host leaves
+  socket.on("disconnect", () => {
+    for (const code in activeRooms) {
+      if (activeRooms[code] === userIP) {
+        delete activeRooms[code];
+        console.log(`Room [${code}] closed because host disconnected.`);
+      }
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Bound Matchmaker running on port ${PORT}`);
 });
