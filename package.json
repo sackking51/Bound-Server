@@ -1,13 +1,12 @@
 {
-  "name": "bound-matchmaker",
+  "name": "bound-relay-server",
   "version": "1.0.0",
-  "description": "Matchmaking relay for Bound HTML5",
+  "description": "High-speed socket relay for Bound",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "socket.io": "^4.7.2",
-    "dotenv": "^16.3.1"
+    "socket.io": "^4.7.2"
   }
 }

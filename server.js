@@ -1,55 +1,49 @@
-// This tells the server to use Railway's assigned port
-const PORT = process.env.PORT || 8080; 
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Matchmaker live on port ${PORT}`);
-});
+const { Server } = require("socket.io");
+const http = require("http");
 
 const server = http.createServer();
 const io = new Server(server, {
-  cors: { origin: "*" } // Allows connections from your HTML5 build
+  cors: { origin: "*" }
 });
 
-// This object stores active rooms: { "RoomCode": "HostIP" }
-const activeRooms = {};
+const rooms = {};
 
 io.on("connection", (socket) => {
-  const userIP = socket.handshake.address.replace('::ffff:', '');
-  console.log(`User connected: ${socket.id} from ${userIP}`);
+  console.log(`User connected: ${socket.id}`);
 
-  // --- HOST LOGIC ---
-  socket.on("host_room", (roomCode) => {
-    activeRooms[roomCode] = userIP;
-    socket.join(roomCode);
-    console.log(`Room [${roomCode}] created by Host at ${userIP}`);
-    socket.emit("status", "Room registered successfully.");
+  // Host creates a room
+  socket.on("create_room", (code) => {
+    socket.join(code);
+    rooms[code] = { host: socket.id, survivor: null };
+    console.log(`Relay Room Created: ${code}`);
   });
 
-  // --- JOINER LOGIC ---
-  socket.on("find_room", (roomCode) => {
-    const targetIP = activeRooms[roomCode];
-
-    if (targetIP) {
-      console.log(`Survivor ${socket.id} found Room [${roomCode}]. Sending IP: ${targetIP}`);
-      // Send the IP back to the survivor so Unreal can "Open" it
-      socket.emit("receive_ip", targetIP); 
-    } else {
-      socket.emit("status", "Room not found. Check your code!");
+  // Survivor joins a room
+  socket.on("join_room", (code) => {
+    if (rooms[code]) {
+      rooms[code].survivor = socket.id;
+      socket.join(code);
+      // Notify host that the tunnel is open
+      io.to(rooms[code].host).emit("survivor_joined", socket.id);
+      console.log(`Survivor ${socket.id} joined Room ${code}`);
     }
   });
 
-  // Cleanup when host leaves
+  // THE RELAY PIPE: Forwards any data to the other person in the room
+  socket.on("relay_data", (data) => {
+    const roomCode = Array.from(socket.rooms)[1];
+    if (roomCode) {
+      socket.to(roomCode).emit("receive_data", data);
+    }
+  });
+
   socket.on("disconnect", () => {
-    for (const code in activeRooms) {
-      if (activeRooms[code] === userIP) {
-        delete activeRooms[code];
-        console.log(`Room [${code}] closed because host disconnected.`);
-      }
-    }
+    console.log(`User disconnected: ${socket.id}`);
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Bound Matchmaker running on port ${PORT}`);
+// Railway uses process.env.PORT
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Relay Server active on port ${PORT}`);
 });
