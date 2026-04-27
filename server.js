@@ -1,22 +1,9 @@
 const app = require('http').createServer();
-const io = require('socket.io')(app, {
-    // Version 2 uses a different CORS syntax
-    handlePreflightRequest: (req, res) => {
-        const headers = {
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Allow-Origin": req.headers.origin,
-            "Access-Control-Allow-Credentials": true
-        };
-        res.writeHead(200, headers);
-        res.end();
-    }
-});
-
+const io = require('socket.io')(app);
 const PORT = process.env.PORT || 3000;
 const rooms = {};
 
 io.on('connection', (socket) => {
-    // IP extraction for Socket.io 2.x
     const clientIP = socket.handshake.headers['x-forwarded-for'] || 
                      socket.request.connection.remoteAddress.replace('::ffff:', '');
     
@@ -29,16 +16,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('join-room', (code) => {
-        const hostIP = rooms[code];
+        let hostIP = rooms[code];
+        
         if (hostIP) {
-            console.log(`Found Room [${code}]. Directing to ${hostIP}`);
+            // LOOPBACK FIX: If testing on one machine, '127.0.0.1' is safer than the Public IP
+            if (hostIP === clientIP) {
+                console.log("Loopback detected (Same Network). Sending 127.0.0.1");
+                hostIP = "127.0.0.1";
+            }
             socket.emit('join-success', hostIP);
-        } else {
-            socket.emit('error', 'Room not found');
         }
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`v2.3.0 Relay running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`v2.3.0 Relay running on port ${PORT}`));
